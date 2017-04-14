@@ -2,6 +2,7 @@ package observatory
 
 import scala.io.Source
 import java.time.LocalDate
+import org.apache.log4j.{Level, Logger}
 
 /**
   * 1st milestone: data extraction
@@ -15,10 +16,15 @@ object Extraction {
     * @return A sequence containing triplets (date, location, temperature)
     */
   def locateTemperatures(year: Int, stationsFile: String, temperaturesFile: String): Iterable[(LocalDate, Location, Double)] = {
+
     def getLinesFromFile(filename: String) = {
-      Source.fromInputStream(getClass.getClassLoader.getResourceAsStream(filename)).getLines()
+      //Source.fromInputStream(getClass.getClassLoader.getResourceAsStream(filename)).getLines()
+       Main.sc.textFile(filename)
     }
 
+    def fahrenheitToCelsius(farenheit: Double) = {
+      ((BigDecimal(farenheit) - 32) * 5 / 9).toDouble
+    }
     // if will use spark, partition by Station case class
 
     val stationLines = getLinesFromFile(stationsFile)
@@ -26,22 +32,22 @@ object Extraction {
       .map(_.split(",", -1))
       .filter(values => values.length == 4 && !values(2).isEmpty && !values(3).isEmpty)
       .map(values => (Station(values(0), values(1)), Location(values(2).toDouble, values(3).toDouble)))
-      .toMap
 
     val temperaturesLines = getLinesFromFile(temperaturesFile)
     val temperatures = temperaturesLines
         .map(_.split(",", -1)).filter(values => values.length == 5) //TODO: maybe remove this
         .map(values => (
             Station(values(0), values(1)),
-            (LocalDate.of(year, values(2).toInt, values(3).toInt), values(4).toDouble))
+            (LocalDate.of(year, values(2).toInt, values(3).toInt),
+              fahrenheitToCelsius(values(4).toDouble)))
         )
-        .toMap
 
-    //if will move to spark, here would be a join between the two
-    val merged: Map[Station, Seq[(Station, Product with Serializable)]] = (stations.toSeq ++ temperatures.toSeq).groupBy(_._1)
-    val cleaned = merged.mapValues(_.map(_._2).toList)
+    val res = stations.join(temperatures).map{
+      case (station, (location, (date, temperature))) => (date, location, temperature)
+    }
 
-    ???
+    val debug = res.toDebugString
+    res.collect().toSeq
   }
 
   /**
