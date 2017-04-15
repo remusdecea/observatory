@@ -2,7 +2,9 @@ package observatory
 
 import scala.io.Source
 import java.time.LocalDate
+
 import org.apache.log4j.{Level, Logger}
+import org.apache.spark.rdd.RDD
 
 /**
   * 1st milestone: data extraction
@@ -46,7 +48,6 @@ object Extraction {
       case (station, (location, (date, temperature))) => (date, location, temperature)
     }
 
-    val debug = res.toDebugString
     res.collect().toSeq
   }
 
@@ -55,7 +56,12 @@ object Extraction {
     * @return A sequence containing, for each location, the average temperature over the year.
     */
   def locationYearlyAverageRecords(records: Iterable[(LocalDate, Location, Double)]): Iterable[(Location, Double)] = {
-    ???
+    val recordsRdd: RDD[(LocalDate, Location, Double)] = Main.sc.parallelize(records.toList)
+    val map = recordsRdd.map(rec => (rec._2, (rec._3, 1)))
+    val key: RDD[(Location, (Double, Int))] = map.reduceByKey{case (x, y) => (x._1 + y._1, x._2 + y._2)}
+    val values: RDD[(Location, Double)] = key.mapValues{case (sum, count) => sum/count}
+    val res = values.collect().toList
+    res
   }
 
 }
